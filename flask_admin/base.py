@@ -509,21 +509,20 @@ class Admin(object):
             name = 'Admin'
         self.name = name
 
-        self.index_view = index_view or AdminIndexView(endpoint=endpoint, url=url)
-        self.endpoint = endpoint or self.index_view.endpoint
-        self.url = url or self.index_view.url
         self.static_url_path = static_url_path
         self.subdomain = subdomain
         self.base_template = base_template or 'admin/base.html'
         self.template_mode = template_mode or 'bootstrap2'
         self.category_icon_classes = category_icon_classes or dict()
 
-        # Add index view
-        self._set_admin_index_view(index_view=index_view, endpoint=endpoint, url=url)
-
         # Register with application
         if app is not None:
+            self._set_admin_index_view(index_view=index_view, endpoint=endpoint, url=url)
             self._init_extension()
+        else:
+            self._create_app_deferred_index_view = index_view
+            self._create_app_deferred_endpoint = endpoint
+            self._create_app_deferred_url = url
 
     def add_view(self, view):
         """
@@ -686,16 +685,21 @@ class Admin(object):
         self._init_extension()
 
         # Register Index view
-        if index_view is not None:
-            self._set_admin_index_view(
-                index_view=index_view,
-                endpoint=endpoint,
-                url=url
-            )
+        # There are 3 levels of priority:
+        # #1: Locally passed arguments
+        # #2: Arguments passed into the initial Admin constructor and deferred to here
+        # #3: Default values as decided by _set_admin_index_view
+        # ... #2 isn't ideal, but helps maintain backwards compatibility for older versions of the library.
+        self._set_admin_index_view(
+            index_view=index_view or self._create_app_deferred_index_view,
+            endpoint=endpoint or self._create_app_deferred_endpoint,
+            url=url or self._create_app_deferred_url
+        )
 
         # Register views
         for view in self._views:
-            app.register_blueprint(view.create_blueprint(self))
+            if view is not index_view:
+                app.register_blueprint(view.create_blueprint(self))
 
     def _init_extension(self):
         if not hasattr(self.app, 'extensions'):
